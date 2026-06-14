@@ -5,10 +5,15 @@ import re
 
 st.set_page_config(page_title="Painel de Dados - SC", layout="wide")
 
-# CSS para customização visual
+# CSS para customização visual e remoção de elementos de interface
 st.markdown(
     """
     <style>
+    /* Esconde o menu de opções e o cabeçalho/footer do Streamlit */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
     h1 {
         font-size: 28px !important;
         font-weight: 700 !important;
@@ -81,6 +86,7 @@ MAPA_REGIOES = {
 }
 
 MAPA_REGIOES = dict(sorted(MAPA_REGIOES.items()))
+
 @st.cache_data
 def carregar_dados_brutos(chave, gid):
     url_csv = f"https://docs.google.com/spreadsheets/d/e/{chave}/pub?gid={gid}&single=true&output=csv"
@@ -99,7 +105,6 @@ try:
         with st.spinner(f"Carregando dados de: {aba_selecionada}..."):
             df_bruto = carregar_dados_brutos(CHAVE_PLANILHA, gid_atual)
 
-        # --- CAPTURA DIRETA DA POPULAÇÃO NA CÉLULA E3 ---
         populacao_atual = None
         texto_populacao_formatado = "Não localizada na célula E3"
         
@@ -118,7 +123,6 @@ try:
             texto_populacao_formatado = "Erro de leitura / Célula vazia"
             
         st.metric(label="👥 População Feminina Aproximada", value=texto_populacao_formatado)
-        # --------------------------------------------------
 
         indices_titulos = []
         nomes_titulos = []
@@ -178,22 +182,15 @@ try:
                         colunas_permitidas.append(col)
 
             df_exibicao = df_bloco[colunas_permitidas].copy()
-            
-            # Garante que só puxamos linhas onde a coluna de ano seja preenchida numericamente (evita pegar rodapés ou lixo da planilha)
             df_exibicao = df_exibicao[df_exibicao[coluna_ano_real].astype(str).str.strip().str.isnumeric()]
 
-            # --- MODIFICAÇÃO CRÍTICA: REMOVIDO O FILTRO QUE APAGAVA AS LINHAS COM CASOS REAIS EM BRANCO ---
-            # Isso garante que os anos projetados apareçam na tabela mesmo sem possuírem dados na coluna "Casos Reais"
-
             if coluna_casos_reais and not df_exibicao.empty:
-                # Faz o parse numérico limpando pontos de milhar e tratando vírgulas
                 vetor_casos = df_exibicao[coluna_casos_reais].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
                 numeros_finais = pd.to_numeric(vetor_casos, errors="coerce").to_numpy()
                 
                 strings_var_final = ["-----"]
                 valores_per_capita = []
                 
-                # Tratamento para a primeira linha
                 if len(numeros_finais) > 0:
                     if pd.isna(numeros_finais[0]): 
                         valores_per_capita.append("-----")
@@ -201,11 +198,8 @@ try:
                         calc_pc = (numeros_finais[0] / populacao_atual) * 1000
                         valores_per_capita.append(f"{round(calc_pc, 1):.1f}")
 
-                # Loop de cálculo linha por linha
                 for idx in range(1, len(numeros_finais)):
                     anterior, atual = numeros_finais[idx - 1], numeros_finais[idx]
-                    
-                    # Variação percentual (SÓ calcula se ambas as células vizinhas tiverem dados numéricos reais)
                     if pd.isna(anterior) or pd.isna(atual) or anterior == 0: 
                         strings_var_final.append("-----")
                     else:
@@ -216,7 +210,6 @@ try:
                         else:
                             strings_var_final.append(f"{'+' if calc_arredondado > 0 else ''}{calc_arredondado:.1f}%")
                     
-                    # Taxa Per Capita por 1.000 (SÓ calcula onde há caso real registrado)
                     if pd.isna(atual):
                         valores_per_capita.append("-----")
                     else:
@@ -226,7 +219,6 @@ try:
                 df_exibicao["VARIAÇÃO %"] = strings_var_final
                 df_exibicao["Taxa por 1.000 Hab."] = valores_per_capita
                 
-                # Reorganiza o posicionamento visual das colunas criadas
                 todas_cols = list(df_exibicao.columns)
                 if "VARIAÇÃO %" in todas_cols: todas_cols.remove("VARIAÇÃO %")
                 if "Taxa por 1.000 Hab." in todas_cols: todas_cols.remove("Taxa por 1.000 Hab.")
@@ -236,14 +228,13 @@ try:
                 todas_cols.insert(idx_pos + 2, "Taxa por 1.000 Hab.")
                 df_exibicao = df_exibicao[todas_cols]
 
-            # Converte valores vazios/nulos textuais para o traço visual padrão
             for coluna in df_exibicao.columns:
                 df_exibicao[coluna] = df_exibicao[coluna].astype(str).str.strip().replace(["", "None", "none", "NaN", "nan", None], "-----")
 
             st.subheader(f"📋 Tabela de Dados — {titulo_selecionado}")
             if not df_exibicao.empty:
                 st.dataframe(df_exibicao, width=950, hide_index=True)
-               
+                
                 if coluna_casos_reais:
                     st.write("---")
                     st.subheader("📊 Visualização Gráfica")
